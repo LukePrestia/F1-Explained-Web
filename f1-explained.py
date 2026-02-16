@@ -926,6 +926,135 @@ if v_seleccionada == T["analyzer"]:
         )
         st.plotly_chart(fig, use_container_width=True)
 
+        # ─────────────────────────────────────────────────────────
+        # GRÁFICOS DE TELEMETRÍA TEMPORAL
+        # ─────────────────────────────────────────────────────────
+        st.html("""<div style="display:flex;align-items:center;gap:12px;margin:32px 0 16px">
+          <div style="font-family:'Titillium Web',sans-serif;font-size:11px;font-weight:700;
+                      letter-spacing:.25em;color:#E8002D;text-transform:uppercase">
+            Telemetría Temporal
+          </div>
+          <div style="flex:1;height:1px;background:#222230"></div>
+        </div>""")
+
+        # Preparar datos temporales
+        df_sorted = df_p.sort_values('date').reset_index(drop=True)
+        df_sorted['time_delta'] = (df_sorted['date'] - df_sorted['date'].iloc[0]).dt.total_seconds()
+
+        # Layout común para todos los gráficos
+        common_layout = dict(
+            plot_bgcolor='#05050D',
+            paper_bgcolor='#05050D',
+            height=220,
+            margin=dict(l=50, r=20, t=30, b=40),
+            font=dict(color='white', family='monospace', size=11),
+            xaxis=dict(
+                title='Tiempo (s)',
+                gridcolor='#1a1a28',
+                showgrid=True,
+                zeroline=False,
+            ),
+            hovermode='x unified',
+        )
+
+        # ── VELOCIDAD ────────────────────────────────────────────
+        fig_speed = go.Figure()
+        fig_speed.add_trace(go.Scatter(
+            x=df_sorted['time_delta'],
+            y=df_sorted['speed'],
+            mode='lines',
+            name='Velocidad',
+            line=dict(color='#00D4FF', width=2),
+            fill='tozeroy',
+            fillcolor='rgba(0,212,255,0.1)',
+        ))
+        fig_speed.update_layout(
+            **common_layout,
+            title='Velocidad',
+            yaxis=dict(title='km/h', gridcolor='#1a1a28'),
+            showlegend=False,
+        )
+
+        # ── RPM ──────────────────────────────────────────────────
+        fig_rpm = go.Figure()
+        fig_rpm.add_trace(go.Scatter(
+            x=df_sorted['time_delta'],
+            y=df_sorted['rpm'],
+            mode='lines',
+            name='RPM',
+            line=dict(color='#FF6B00', width=2),
+            fill='tozeroy',
+            fillcolor='rgba(255,107,0,0.1)',
+        ))
+        fig_rpm.update_layout(
+            **common_layout,
+            title='RPM',
+            yaxis=dict(title='RPM', gridcolor='#1a1a28'),
+            showlegend=False,
+        )
+
+        # ── THROTTLE / BRAKE ─────────────────────────────────────
+        fig_pedals = go.Figure()
+        # Throttle en verde
+        fig_pedals.add_trace(go.Scatter(
+            x=df_sorted['time_delta'],
+            y=df_sorted['throttle'],
+            mode='lines',
+            name='Acelerador',
+            line=dict(color='#00FF88', width=2),
+            fill='tozeroy',
+            fillcolor='rgba(0,255,136,0.15)',
+        ))
+        # Brake en rojo (negativo)
+        fig_pedals.add_trace(go.Scatter(
+            x=df_sorted['time_delta'],
+            y=-df_sorted['brake'],
+            mode='lines',
+            name='Freno',
+            line=dict(color='#FF2200', width=2),
+            fill='tozeroy',
+            fillcolor='rgba(255,34,0,0.15)',
+        ))
+        fig_pedals.update_layout(
+            **common_layout,
+            title='Acelerador / Freno',
+            yaxis=dict(title='% (↑Accel ↓Freno)', gridcolor='#1a1a28'),
+            legend=dict(orientation='h', y=1.1, x=0.5, xanchor='center', font=dict(size=10)),
+        )
+
+        # ── MARCHAS ──────────────────────────────────────────────
+        if 'n_gear' in df_sorted.columns:
+            fig_gear = go.Figure()
+            fig_gear.add_trace(go.Scatter(
+                x=df_sorted['time_delta'],
+                y=df_sorted['n_gear'],
+                mode='lines',
+                name='Marcha',
+                line=dict(color='#FFD600', width=3, shape='hv'),
+            ))
+            fig_gear.update_layout(
+                **common_layout,
+                title='Marcha',
+                yaxis=dict(
+                    title='Gear',
+                    gridcolor='#1a1a28',
+                    dtick=1,
+                    range=[0, 9],
+                ),
+                showlegend=False,
+            )
+
+        # ── RENDERIZAR GRÁFICOS ──────────────────────────────────
+        col1, col2 = st.columns(2)
+        with col1:
+            st.plotly_chart(fig_speed, use_container_width=True)
+            st.plotly_chart(fig_pedals, use_container_width=True)
+        with col2:
+            st.plotly_chart(fig_rpm, use_container_width=True)
+            if 'n_gear' in df_sorted.columns:
+                st.plotly_chart(fig_gear, use_container_width=True)
+
+
         # Widget de energía DEBAJO del mapa
         st.html(html_widget)
 
