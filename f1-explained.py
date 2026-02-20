@@ -408,22 +408,70 @@ def calcular_energia_2026(df):
     # Cap dt a 0.5s — gaps mayores son pausas de telemetría, no tiempo real de motor
     df['dt'] = df['date'].diff().dt.total_seconds().fillna(0).clip(upper=0.12)
     df['racha_id'] = (df['ia_status_key'] != df['ia_status_key'].shift()).cumsum()
+    
+    # Constantes físicas
+    MASA_F1 = 800  # kg (peso mínimo reglamentario ~798 kg con piloto)
+    EF_MGU_K = 0.75  # Eficiencia de conversión del MGU-K (~70-80%)
+    P_MAX_DEPLOYMENT = 350000  # W
+    P_MAX_HARVESTING = 350000  # W (límite de potencia regenerativa)
 
-    def estimar_potencia(row):
+    def estimar_potencia(row, idx):
         v, key = row['speed'], row['ia_status_key']
+        
+        # ── DEPLOYMENT ──────────────────────────────────
         if key == IA_DEPLOYMENT:
-            p_max = 350000
+            p_max = P_MAX_DEPLOYMENT
+            # Derating por encima de 290 km/h
             if v > 290:
                 factor = max(0.3, 1 - (v - 290) / 100)
                 p_max *= factor
             return p_max * (row['throttle'] / 100)
+        
+        # ── CLIPPING  ──────────────────────────────
         elif key == IA_CLIPPING:
             return 0
+        
+        # ── HARVESTING ───────────────────────────
         elif key == IA_HARVESTING:
-            return -350000 * (min(row['brake'], 100) / 100) if row['brake'] > 5 else -40000
+            # Obtener velocidad siguiente para calcular ΔE_cinética
+            if idx < len(df) - 1:
+                v_actual = row['speed'] / 3.6  # km/h -> m/s
+                v_next = df.iloc[idx + 1]['speed'] / 3.6
+                dt = row['dt']
+                
+                # ΔE_cinética = 0.5 * m * (v1² - v2²)
+                delta_E_k = 0.5 * MASA_F1 * (v_actual**2 - v_next**2)
+                
+                # Factor de regeneración: a más freno, más va a mecánicos
+                # Con brake bajo el MGU-K captura casi todo
+                # Con brake alto (>80%) los frenos mecánicos disipan mucho
+                brake_pct = min(row['brake'], 100)
+                if brake_pct > 5:
+                    # Curva: 90% regen con brake bajo, 20% con brake muy alto
+                    regen_factor = max(0.2, 1 - brake_pct / 150)
+                else:
+                    # Sin freno activo, lift & coast recupera menos
+                    regen_factor = 0.3
+                
+                # Energía recuperable = ΔE_k * eficiencia * factor_regen
+                E_recuperable = delta_E_k * EF_MGU_K * regen_factor
+                
+                # Potencia = Energía / tiempo, limitada a 350 kW
+                if dt > 0:
+                    potencia = -min(E_recuperable / dt, P_MAX_HARVESTING)
+                else:
+                    potencia = 0
+                
+                return potencia
+            else:
+                # Último punto, asumir potencia mínima
+                return -40000
+        
+        # ── NEUTRAL ─────────────────────────────────────────────
         return 0
 
-    df['power_w'] = df.apply(estimar_potencia, axis=1)
+    # Aplicar cálculo punto por punto con índice
+    df['power_w'] = [estimar_potencia(row, idx) for idx, row in df.iterrows()]
     df['energy_j'] = df['power_w'] * df['dt']
     return df
 
