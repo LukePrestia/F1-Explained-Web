@@ -176,7 +176,7 @@ With a **350 kW** MGU-K, 8.5 MJ allows maximum electric power for **~24 seconds*
         "session": "Sessão",
         "driver": "Piloto",
         "language": "🌐 Idioma",
-        "page_title": "🏎️ F1 2026 IA: Analisador de Telemetria",
+        "page_title": "🏎️ F1 IA: Analisador de Telemetria",
         "load_laps": "🚀 Carregar Histórico de Voltas",
         "laps_loaded": "{n} voltas carregadas",
         "select_lap": "Selecione a volta:",
